@@ -19,42 +19,62 @@ import "streamdown/styles.css";
 const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
 const BLOCK_LATEX_REGEX = /\\\[(.+?)\\\]/gs;
 const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
+const DISPLAY_MATH_BLOCK_REGEX = /(^|\n)([ \t]*)\$\$\n([\s\S]*?)\n\2\$\$(?=\n|$)/g;
+const DISPLAY_MATH_LINE_PLACEHOLDER = "&#45;";
+
+type Range = {
+  start: number;
+  end: number;
+};
+
+function collectRanges(content: string, regex: RegExp): Range[] {
+  const ranges: Range[] = [];
+  const pattern = new RegExp(regex.source, regex.flags);
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(content)) !== null) {
+    ranges.push({
+      start: match.index,
+      end: match.index + match[0].length,
+    });
+  }
+
+  return ranges;
+}
+
+function isInRanges(position: number, ranges: Range[]): boolean {
+  return ranges.some((range) => position >= range.start && position < range.end);
+}
+
+function protectDisplayMathBlock(content: string): string {
+  return content.replace(DISPLAY_MATH_BLOCK_REGEX, (match, leadingNewline, indent, body) => {
+    const protectedBody = body.replace(/^([ \t]*)- /gm, (_, lineIndent) => {
+      return `${lineIndent}${DISPLAY_MATH_LINE_PLACEHOLDER} `;
+    });
+
+    return `${leadingNewline}${indent}$$\n${protectedBody}\n${indent}$$`;
+  });
+}
 
 // Preprocess markdown content
 function preProcess(content: string): string {
-  // Find all code block positions
-  const codeBlocks: { start: number; end: number }[] = [];
-  let match;
-  const codeBlockRegex = new RegExp(CODE_BLOCK_REGEX.source, "g");
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    codeBlocks.push({ start: match.index, end: match.index + match[0].length });
-  }
+  const codeRanges = collectRanges(content, CODE_BLOCK_REGEX);
 
-  // Check if position is inside a code block
-  const isInCodeBlock = (position: number): boolean => {
-    return codeBlocks.some((range) => position >= range.start && position < range.end);
-  };
-
-  // Replace inline formulas \( ... \) to $ ... $, skip code blocks
-  let result = content.replace(
-    new RegExp(INLINE_LATEX_REGEX.source, "g"),
-    (match, group1, offset) => {
-      if (isInCodeBlock(offset)) {
-        return match;
-      }
-      return `$${group1}$`;
-    },
-  );
-
-  // Replace block formulas \[ ... \] to $$ ... $$, skip code blocks
-  result = result.replace(new RegExp(BLOCK_LATEX_REGEX.source, "gs"), (match, group1, offset) => {
-    if (isInCodeBlock(offset)) {
+  let result = content.replace(new RegExp(INLINE_LATEX_REGEX.source, "g"), (match, group1, offset) => {
+    if (isInRanges(offset, codeRanges)) {
       return match;
     }
-    return `$$${group1}$$`;
+    return `$${group1}$`;
   });
 
-  return result;
+  result = result.replace(new RegExp(BLOCK_LATEX_REGEX.source, "gs"), (match, group1, offset) => {
+    if (isInRanges(offset, codeRanges)) {
+      return match;
+    }
+    return `$$\n${group1}\n$$`;
+  });
+
+  return protectDisplayMathBlock(result);
 }
 
 type MarkdownProps = {
