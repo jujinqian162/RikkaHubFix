@@ -23,37 +23,30 @@ jobs:
         run: |
           if [ ! -f app/google-services.json ]; then
             mkdir -p app
-            python - <<'PY'
-from pathlib import Path
-
-Path("app/google-services.json").write_text(
-    '''{
-  "project_info": {
-    "project_number": "000000000000",
-    "project_id": "debug-placeholder",
-    "storage_bucket": "debug-placeholder.appspot.com"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:000000000000:android:debugplaceholder",
-        "android_client_info": {
-          "package_name": "me.rerere.rikkahub"
-        }
-      },
-      "api_key": [
-        {
-          "current_key": "debug-placeholder"
-        }
-      ]
-    }
-  ],
-  "configuration_version": "1"
-}
-''',
-    encoding="utf-8",
-)
-PY
+            printf '%s\n' \
+              '{' \
+              '  "project_info": {' \
+              '    "project_number": "000000000000",' \
+              '    "project_id": "debug-placeholder",' \
+              '    "storage_bucket": "debug-placeholder.appspot.com"' \
+              '  },' \
+              '  "client": [' \
+              '    {' \
+              '      "client_info": {' \
+              '        "mobilesdk_app_id": "1:000000000000:android:debugplaceholder",' \
+              '        "android_client_info": {' \
+              '          "package_name": "me.rerere.rikkahub"' \
+              '        }' \
+              '      },' \
+              '      "api_key": [' \
+              '        {' \
+              '          "current_key": "debug-placeholder"' \
+              '        }' \
+              '      ]' \
+              '    }' \
+              '  ],' \
+              '  "configuration_version": "1"' \
+              '}' > app/google-services.json
           fi
 
       - name: Make Gradle wrapper executable
