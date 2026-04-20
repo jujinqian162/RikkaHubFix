@@ -19,12 +19,17 @@ import "streamdown/styles.css";
 const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
 const BLOCK_LATEX_REGEX = /\\\[(.+?)\\\]/gs;
 const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
-const DISPLAY_MATH_BLOCK_REGEX = /(^|\n)([ \t]*)\$\$\n([\s\S]*?)\n\2\$\$(?=\n|$)/g;
-const DISPLAY_MATH_LINE_PLACEHOLDER = "&#45;";
+const DISPLAY_MATH_REGEX = /\$\$\n([\s\S]*?)\n\$\$/g;
+const DISPLAY_MATH_TOKEN = "__RIKKAHUB_DISPLAY_MATH_BLOCK_";
 
 type Range = {
   start: number;
   end: number;
+};
+
+type ExtractDisplayMathResult = {
+  content: string;
+  blocks: string[];
 };
 
 function collectRanges(content: string, regex: RegExp): Range[] {
@@ -46,13 +51,20 @@ function isInRanges(position: number, ranges: Range[]): boolean {
   return ranges.some((range) => position >= range.start && position < range.end);
 }
 
-function protectDisplayMathBlock(content: string): string {
-  return content.replace(DISPLAY_MATH_BLOCK_REGEX, (match, leadingNewline, indent, body) => {
-    const protectedBody = body.replace(/^([ \t]*)- /gm, (_, lineIndent) => {
-      return `${lineIndent}${DISPLAY_MATH_LINE_PLACEHOLDER} `;
-    });
+function extractDisplayMathBlocks(content: string): ExtractDisplayMathResult {
+  const blocks: string[] = [];
+  const extracted = content.replace(DISPLAY_MATH_REGEX, (match) => {
+    const token = `${DISPLAY_MATH_TOKEN}${blocks.length}__`;
+    blocks.push(match);
+    return token;
+  });
 
-    return `${leadingNewline}${indent}$$\n${protectedBody}\n${indent}$$`;
+  return { content: extracted, blocks };
+}
+
+function restoreDisplayMathBlocks(content: string, blocks: string[]): string {
+  return content.replace(new RegExp(`${DISPLAY_MATH_TOKEN}(\\d+)__`, "g"), (match, index) => {
+    return blocks[Number(index)] ?? match;
   });
 }
 
@@ -74,7 +86,9 @@ function preProcess(content: string): string {
     return `$$\n${group1}\n$$`;
   });
 
-  return protectDisplayMathBlock(result);
+  const { content: isolatedContent, blocks } = extractDisplayMathBlocks(result);
+
+  return restoreDisplayMathBlocks(isolatedContent, blocks);
 }
 
 type MarkdownProps = {
