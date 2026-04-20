@@ -1,9 +1,9 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Streamdown } from "streamdown";
-import { cjk } from "@streamdown/cjk";
-import { math } from "@streamdown/math";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import { cn } from "~/lib/utils";
 import { getCodePreviewLanguage } from "~/components/workbench/code-preview-language";
@@ -12,7 +12,6 @@ import { useSettingsStore } from "~/stores";
 import { CodeBlock } from "./code-block";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
-import "streamdown/styles.css";
 
 // Regex patterns for preprocessing
 const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
@@ -115,14 +114,10 @@ export default function Markdown({
   );
 
   return (
-    <div className={cn("markdown", className)}>
-      <Streamdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-        plugins={{ cjk, math }}
-        animated={{ animation: "fadeIn", sep: "word", duration: 150 }}
-        isAnimating={isAnimating}
-        controls={{ code: false, mermaid: false }}
+    <div className={cn("markdown", className, isAnimating && "animate-in fade-in duration-150")}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex, rehypeRaw]}
         components={{
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children, ...props }) => {
@@ -200,7 +195,7 @@ export default function Markdown({
         }}
       >
         {processedContent}
-      </Streamdown>
+      </ReactMarkdown>
     </div>
   );
 }
