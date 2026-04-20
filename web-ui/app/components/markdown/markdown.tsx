@@ -63,6 +63,40 @@ function preProcess(content: string): string {
   return result;
 }
 
+type SplitStreamingContentResult = {
+  stableContent: string;
+  pendingContent: string;
+};
+
+function splitStreamingContent(content: string): SplitStreamingContentResult {
+  const codeRanges = collectRanges(content, CODE_BLOCK_REGEX);
+  const delimiterRegex = /\$\$/g;
+  let match: RegExpExecArray | null;
+  let delimiterCount = 0;
+  let lastDelimiterStart = -1;
+
+  while ((match = delimiterRegex.exec(content)) !== null) {
+    if (isInRanges(match.index, codeRanges)) {
+      continue;
+    }
+
+    delimiterCount += 1;
+    lastDelimiterStart = match.index;
+  }
+
+  if (delimiterCount % 2 === 0 || lastDelimiterStart < 0) {
+    return {
+      stableContent: content,
+      pendingContent: "",
+    };
+  }
+
+  return {
+    stableContent: content.slice(0, lastDelimiterStart),
+    pendingContent: content.slice(lastDelimiterStart),
+  };
+}
+
 type MarkdownProps = {
   content: string;
   className?: string;
@@ -92,6 +126,16 @@ export default function Markdown({
   const workbench = useOptionalWorkbench();
   const displaySetting = useSettingsStore((state) => state.settings?.displaySetting);
   const processedContent = React.useMemo(() => preProcess(content), [content]);
+  const { stableContent, pendingContent } = React.useMemo(() => {
+    if (!isAnimating) {
+      return {
+        stableContent: processedContent,
+        pendingContent: "",
+      };
+    }
+
+    return splitStreamingContent(processedContent);
+  }, [isAnimating, processedContent]);
   const handlePreviewCode = React.useCallback(
     (language: string, code: string) => {
       if (!allowCodePreview || !workbench) return;
@@ -194,8 +238,11 @@ export default function Markdown({
           },
         }}
       >
-        {processedContent}
+        {stableContent}
       </ReactMarkdown>
+      {pendingContent && (
+        <pre className="whitespace-pre-wrap break-words">{pendingContent}</pre>
+      )}
     </div>
   );
 }
