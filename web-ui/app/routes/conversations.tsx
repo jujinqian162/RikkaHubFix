@@ -293,6 +293,21 @@ function rewriteDisplayMathInternalLeadingSigns(text: string): string {
   });
 }
 
+function patchConversationStreamPayload(rawData: string): string {
+  try {
+    const parsed = JSON.parse(rawData) as ConversationStreamEvent;
+
+    if (parsed.type !== "node_update") {
+      return rawData;
+    }
+
+    const patched = patchStreamingMathNodeUpdate(parsed);
+    return patched === parsed ? rawData : JSON.stringify(patched);
+  } catch {
+    return rawData;
+  }
+}
+
 function patchStreamingMathPart(part: UIMessagePart): UIMessagePart {
   switch (part.type) {
     case "text": {
@@ -436,6 +451,11 @@ function useConversationDetail(activeId: string | null, updateSummary: Conversat
     void sse<ConversationStreamEvent>(
       `conversations/${activeId}/stream`,
       {
+        transformMessage: ({ event, data, id }) => ({
+          event,
+          id,
+          data: patchConversationStreamPayload(data),
+        }),
         onMessage: ({ event, data }) => {
           if (!mounted) return;
 
@@ -458,7 +478,7 @@ function useConversationDetail(activeId: string | null, updateSummary: Conversat
           useAppStore.getState().setClockOffset(data.serverTime);
           setDetail((prev) => {
             if (!prev) return prev;
-            const next = applyNodeUpdate(prev, patchStreamingMathNodeUpdate(data));
+            const next = applyNodeUpdate(prev, data);
             if (next === prev) return prev;
             if (prev.isGenerating !== next.isGenerating) {
               updateSummary(toConversationSummaryUpdate(next));

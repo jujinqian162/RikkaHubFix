@@ -15,6 +15,12 @@ interface WebAuthRequiredEventDetail {
   code: number;
 }
 
+type SSETransform = (event: { event: string; data: string; id?: string }) => {
+  event?: string;
+  data: string;
+  id?: string;
+};
+
 export class ApiError extends Error {
   code: number;
 
@@ -208,6 +214,7 @@ export interface SSECallbacks<T> {
   onError?: (error: Error) => void;
   onOpen?: () => void;
   onClose?: () => void;
+  transformMessage?: SSETransform;
 }
 
 /**
@@ -262,8 +269,21 @@ async function sse<T>(
         } else if (trimmedLine === "") {
           if (currentData) {
             try {
-              const data = JSON.parse(currentData) as T;
-              callbacks.onMessage({ event: currentEvent, data, id: currentId });
+              const transformedEvent = callbacks.transformMessage?.({
+                event: currentEvent,
+                data: currentData,
+                id: currentId,
+              }) ?? {
+                event: currentEvent,
+                data: currentData,
+                id: currentId,
+              };
+              const data = JSON.parse(transformedEvent.data) as T;
+              callbacks.onMessage({
+                event: transformedEvent.event ?? currentEvent,
+                data,
+                id: transformedEvent.id ?? currentId,
+              });
             } catch {
               // Ignore JSON parse error
             }
