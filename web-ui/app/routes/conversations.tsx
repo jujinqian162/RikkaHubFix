@@ -276,6 +276,90 @@ function buildEditedParts(session: EditingSession, draftParts: UIMessagePart[]):
   return [...preservedParts, ...appendedAttachments];
 }
 
+function rewriteDisplayMathInternalLeadingSigns(text: string): string {
+  return text.replace(/\\\[([\s\S]*?)\\\]|\$\$([\s\S]*?)\$\$/g, (match, bracketBody, dollarBody) => {
+    const body = typeof bracketBody === "string" ? bracketBody : dollarBody;
+    const rewrittenBody = body.replace(/(^|\n)([ \t]*)([+-])(?=(?:[ \t]|$))/g, "$1$2{}$3");
+
+    if (rewrittenBody === body) {
+      return match;
+    }
+
+    if (typeof bracketBody === "string") {
+      return `\\[${rewrittenBody}\\]`;
+    }
+
+    return `$$${rewrittenBody}$$`;
+  });
+}
+
+function patchStreamingMathPart(part: UIMessagePart): UIMessagePart {
+  switch (part.type) {
+    case "text": {
+      const nextText = rewriteDisplayMathInternalLeadingSigns(part.text);
+      return nextText === part.text ? part : { ...part, text: nextText };
+    }
+    case "reasoning": {
+      const nextReasoning = rewriteDisplayMathInternalLeadingSigns(part.reasoning);
+      return nextReasoning === part.reasoning ? part : { ...part, reasoning: nextReasoning };
+    }
+    case "tool": {
+      if (!Array.isArray(part.output)) {
+        return part;
+      }
+
+      const nextOutput = patchStreamingMathParts(part.output);
+      return nextOutput === part.output ? part : { ...part, output: nextOutput };
+    }
+    default:
+      return part;
+  }
+}
+
+function patchStreamingMathParts(parts: UIMessagePart[]): UIMessagePart[] {
+  let changed = false;
+
+  const nextParts = parts.map((part) => {
+    const nextPart = patchStreamingMathPart(part);
+    if (nextPart !== part) {
+      changed = true;
+    }
+    return nextPart;
+  });
+
+  return changed ? nextParts : parts;
+}
+
+function patchStreamingMathNodeUpdate(
+  event: ConversationNodeUpdateEventDto,
+): ConversationNodeUpdateEventDto {
+  let changed = false;
+
+  const nextNodeMessages = event.node.messages.map((message) => {
+    const nextParts = patchStreamingMathParts(message.parts);
+    if (nextParts !== message.parts) {
+      changed = true;
+      return {
+        ...message,
+        parts: nextParts,
+      };
+    }
+    return message;
+  });
+
+  if (!changed) {
+    return event;
+  }
+
+  return {
+    ...event,
+    node: {
+      ...event.node,
+      messages: nextNodeMessages,
+    },
+  };
+}
+
 function applyNodeUpdate(
   conversation: ConversationDto,
   event: ConversationNodeUpdateEventDto,
@@ -374,7 +458,7 @@ function useConversationDetail(activeId: string | null, updateSummary: Conversat
           useAppStore.getState().setClockOffset(data.serverTime);
           setDetail((prev) => {
             if (!prev) return prev;
-            const next = applyNodeUpdate(prev, data);
+            const next = applyNodeUpdate(prev, patchStreamingMathNodeUpdate(data));
             if (next === prev) return prev;
             if (prev.isGenerating !== next.isGenerating) {
               updateSummary(toConversationSummaryUpdate(next));
