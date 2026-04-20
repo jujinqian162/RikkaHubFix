@@ -42,6 +42,32 @@ function isInRanges(position: number, ranges: Range[]): boolean {
   return ranges.some((range) => position >= range.start && position < range.end);
 }
 
+function rewriteDisplayMathLeadingOperators(content: string): string {
+  const codeRanges = collectRanges(content, CODE_BLOCK_REGEX);
+  const blockRegex = /\$\$([\s\S]*?)\$\$/g;
+  let result = "";
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRegex.exec(content)) !== null) {
+    if (isInRanges(match.index, codeRanges)) {
+      continue;
+    }
+
+    result += content.slice(lastIndex, match.index);
+    const rewrittenMath = match[1].replace(/(^[ \t]*)([+-])/gm, "$1{}$2");
+    result += `$$${rewrittenMath}$$`;
+    lastIndex = blockRegex.lastIndex;
+  }
+
+  if (lastIndex === 0) {
+    return content;
+  }
+
+  result += content.slice(lastIndex);
+  return result;
+}
+
 // Preprocess markdown content
 function preProcess(content: string): string {
   const codeRanges = collectRanges(content, CODE_BLOCK_REGEX);
@@ -59,6 +85,8 @@ function preProcess(content: string): string {
     }
     return `$$\n${group1}\n$$`;
   });
+
+  result = rewriteDisplayMathLeadingOperators(result);
 
   return result;
 }
