@@ -1,0 +1,65 @@
+name: Debug Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Ensure google-services placeholder exists
+        shell: bash
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            mkdir -p app
+            cat > app/google-services.json <<'EOF'
+            {
+              "project_info": {
+                "project_number": "000000000000",
+                "project_id": "debug-placeholder",
+                "storage_bucket": "debug-placeholder.appspot.com"
+              },
+              "client": [
+                {
+                  "client_info": {
+                    "mobilesdk_app_id": "1:000000000000:android:debugplaceholder",
+                    "android_client_info": {
+                      "package_name": "me.rerere.rikkahub"
+                    }
+                  },
+                  "api_key": [
+                    {
+                      "current_key": "debug-placeholder"
+                    }
+                  ]
+                }
+              ],
+              "configuration_version": "1"
+            }
+            EOF
+          fi
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload debug APK artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: debug-apks
+          path: app/build/outputs/apk/debug/
+          if-no-files-found: error
