@@ -35,7 +35,7 @@ jobs:
               '      "client_info": {' \
               '        "mobilesdk_app_id": "1:000000000000:android:debugplaceholder",' \
               '        "android_client_info": {' \
-              '          "package_name": "me.rerere.rikkahub"' \
+              '          "package_name": "me.rerere.rikkahub.debug"' \
               '        }' \
               '      },' \
               '      "api_key": [' \
