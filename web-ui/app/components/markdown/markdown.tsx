@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
-import { Streamdown } from "streamdown";
+import { Streamdown, parseMarkdownIntoBlocks } from "streamdown";
 import { cjk } from "@streamdown/cjk";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -20,7 +20,7 @@ const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
 const BLOCK_LATEX_REGEX = /\\\[(.+?)\\\]/gs;
 const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
 const DISPLAY_MATH_REGEX = /\$\$\n([\s\S]*?)\n\$\$/g;
-const DISPLAY_MATH_TOKEN = "__RIKKAHUB_DISPLAY_MATH_BLOCK_";
+const DISPLAY_MATH_SPLIT_TOKEN = "__RIKKAHUB_DISPLAY_MATH_SPLIT_BLOCK_";
 
 type Range = {
   start: number;
@@ -54,7 +54,7 @@ function isInRanges(position: number, ranges: Range[]): boolean {
 function extractDisplayMathBlocks(content: string): ExtractDisplayMathResult {
   const blocks: string[] = [];
   const extracted = content.replace(DISPLAY_MATH_REGEX, (match) => {
-    const token = `${DISPLAY_MATH_TOKEN}${blocks.length}__`;
+    const token = `${DISPLAY_MATH_SPLIT_TOKEN}${blocks.length}__`;
     blocks.push(match);
     return token;
   });
@@ -63,8 +63,16 @@ function extractDisplayMathBlocks(content: string): ExtractDisplayMathResult {
 }
 
 function restoreDisplayMathBlocks(content: string, blocks: string[]): string {
-  return content.replace(new RegExp(`${DISPLAY_MATH_TOKEN}(\\d+)__`, "g"), (match, index) => {
+  return content.replace(new RegExp(`${DISPLAY_MATH_SPLIT_TOKEN}(\\d+)__`, "g"), (match, index) => {
     return blocks[Number(index)] ?? match;
+  });
+}
+
+function parseMarkdownIntoProtectedBlocks(markdown: string): string[] {
+  const { content: isolatedContent, blocks } = extractDisplayMathBlocks(markdown);
+
+  return parseMarkdownIntoBlocks(isolatedContent).map((block) => {
+    return restoreDisplayMathBlocks(block, blocks);
   });
 }
 
@@ -86,9 +94,7 @@ function preProcess(content: string): string {
     return `$$\n${group1}\n$$`;
   });
 
-  const { content: isolatedContent, blocks } = extractDisplayMathBlocks(result);
-
-  return restoreDisplayMathBlocks(isolatedContent, blocks);
+  return result;
 }
 
 type MarkdownProps = {
@@ -144,6 +150,7 @@ export default function Markdown({
   return (
     <div className={cn("markdown", className)}>
       <Streamdown
+        parseMarkdownIntoBlocksFn={parseMarkdownIntoProtectedBlocks}
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeRaw]}
         plugins={{ cjk: cjk }}
