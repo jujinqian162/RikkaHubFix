@@ -60,6 +60,17 @@ val PermissionCamera = PermissionInfo(
     required = true
 )
 
+val PermissionReadImages = PermissionInfo(
+    permission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Manifest.permission.READ_MEDIA_IMAGES
+    } else {
+        Manifest.permission.READ_EXTERNAL_STORAGE
+    },
+    displayName = { Text(stringResource(R.string.permission_read_images)) },
+    usage = { Text(stringResource(R.string.permission_read_images_desc)) },
+    required = true
+)
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 val PermissionNotification = PermissionInfo(
     permission = Manifest.permission.POST_NOTIFICATIONS,

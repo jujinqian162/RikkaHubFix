@@ -223,6 +223,9 @@
   <string name="chain_of_thought_collapse">Collapse</string>
   <string name="chain_of_thought_show_more_steps">Show %d more steps</string>
   <string name="chat_input_placeholder">Chat with AI</string>
+  <string name="chat_input_manage_files_permission_title">Allow all files access for image uploads</string>
+  <string name="chat_input_manage_files_permission_desc">Some devices require the special all files access setting for chat image uploads even after photo permission is granted. If image picking still fails, open settings and allow all files access as a workaround.</string>
+  <string name="chat_input_manage_files_permission_open_settings">Open settings</string>
   <string name="chat_input_unsupported_file_type">Unsupported file type: %s</string>
   <string name="chat_message_add_favorite">Add Favorite</string>
   <string name="chat_message_remove_favorite">Remove Favorite</string>
@@ -433,6 +436,8 @@
   <string name="notification_web_server_stop">Stop</string>
   <string name="permission_camera">Camera</string>
   <string name="permission_camera_desc">Camera permission is required to take photos</string>
+  <string name="permission_read_images">Photos and videos</string>
+  <string name="permission_read_images_desc">Allow access to images for chat uploads</string>
   <string name="permission_desc_goto_setting">Some permissions have been permanently denied, please go to the app settings to manually enable them:</string>
   <string name="permission_desc_require_permission">In order to provide a better user experience, the app requires the following permissions:</string>
   <string name="permission_diaog_title">Permission Request</string>

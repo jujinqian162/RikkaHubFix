@@ -1,8 +1,10 @@
 package me.rerere.rikkahub.ui.components.ai
 
+import android.app.Activity
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,6 +70,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -138,11 +141,14 @@ import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
 import me.rerere.rikkahub.ui.components.ui.KeepScreenOn
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
+import me.rerere.rikkahub.ui.components.ui.permission.PermissionReadImages
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.LocalToaster
 import me.rerere.rikkahub.ui.hooks.ChatInputState
+import me.rerere.rikkahub.utils.hasManageAllFilesAccess
+import me.rerere.rikkahub.utils.openManageAllFilesAccessSettings
 import org.koin.compose.koinInject
 import java.io.File
 import kotlin.time.Duration.Companion.seconds
@@ -209,6 +215,40 @@ fun ChatInput(
 
     val context = LocalContext.current
     val filesManager: FilesManager = koinInject()
+    val imagePermission = rememberPermissionState(PermissionReadImages)
+    var showManageFilesDialog by rememberSaveable { mutableStateOf(false) }
+
+    val manageFilesSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        showManageFilesDialog = false
+        imagePermission.refreshPermissionStates()
+        if (
+            imagePermission.allRequiredPermissionsGranted &&
+            (!requiresManageFilesWorkaround() || context.hasManageAllFilesAccess())
+        ) {
+            imagePickerLauncher.launch("image/*")
+        }
+    }
+
+    fun launchChatImagePicker() {
+        imagePermission.refreshPermissionStates()
+        when {
+            !imagePermission.allRequiredPermissionsGranted -> {
+                showManageFilesDialog = false
+                imagePermission.requestPermissions()
+            }
+
+            requiresManageFilesWorkaround() && !context.hasManageAllFilesAccess() -> {
+                showManageFilesDialog = true
+            }
+
+            else -> {
+                showManageFilesDialog = false
+                imagePickerLauncher.launch("image/*")
+            }
+        }
+    }
 
     // Camera launcher
     var cameraOutputUri by remember { mutableStateOf<Uri?>(null) }
@@ -290,6 +330,15 @@ fun ChatInput(
                 Log.d("ImagePickButton", "No images selected")
             }
         }
+
+    LaunchedEffect(imagePermission.allRequiredPermissionsGranted) {
+        if (imagePermission.allRequiredPermissionsGranted && !showManageFilesDialog) {
+            imagePermission.refreshPermissionStates()
+            if (requiresManageFilesWorkaround() && !context.hasManageAllFilesAccess()) {
+                showManageFilesDialog = true
+            }
+        }
+    }
 
     // Video picker launcher
     val videoPickerLauncher =
