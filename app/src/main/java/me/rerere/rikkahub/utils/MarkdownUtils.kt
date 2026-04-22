@@ -1,5 +1,11 @@
 package me.rerere.rikkahub.utils
 
+private val inlineLatexRegex = Regex("\\\\\\((.+?)\\\\\\)")
+private val blockLatexRegex = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
+private val codeBlockRegex = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
+private val displayBracketOpenRegex = Regex("""\\\[""")
+private val displayBracketCloseRegex = Regex("""\\]""")
+
 /**
  * 移除字符串中的Markdown格式
  * @return 移除Markdown格式后的纯文本
@@ -51,4 +57,73 @@ fun String.extractThinkingTitle(): String? {
     }
 
     return null
+}
+
+fun preprocessMarkdownForRender(content: String): String {
+    val bracketBalanced = closeTrailingUnmatchedDisplayBracketMath(content)
+    val codeBlocks = codeBlockRegex.findAll(bracketBalanced).map { it.range }.toList()
+
+    fun isInCodeBlock(position: Int): Boolean {
+        return codeBlocks.any { range -> position in range }
+    }
+
+    var result = inlineLatexRegex.replace(bracketBalanced) { match ->
+        if (isInCodeBlock(match.range.first)) {
+            match.value
+        } else {
+            "$" + match.groupValues[1] + "$"
+        }
+    }
+
+    result = blockLatexRegex.replace(result) { match ->
+        if (isInCodeBlock(match.range.first)) {
+            match.value
+        } else {
+            "$$" + match.groupValues[1] + "$$"
+        }
+    }
+
+    return closeTrailingUnmatchedDollarMathBlock(result)
+}
+
+private fun closeTrailingUnmatchedDisplayBracketMath(content: String): String {
+    val codeBlocks = codeBlockRegex.findAll(content).map { it.range }.toList()
+
+    fun isInCodeBlock(position: Int): Boolean {
+        return codeBlocks.any { range -> position in range }
+    }
+
+    val openCount = displayBracketOpenRegex.findAll(content).count { !isInCodeBlock(it.range.first) }
+    val closeCount = displayBracketCloseRegex.findAll(content).count { !isInCodeBlock(it.range.first) }
+    if (openCount <= closeCount) return content
+
+    return buildString {
+        append(content.trimEnd())
+        append('\n')
+        append("\\]")
+    }
+}
+
+private fun closeTrailingUnmatchedDollarMathBlock(content: String): String {
+    val codeBlocks = codeBlockRegex.findAll(content).map { it.range }.toList()
+    val fenceLines = mutableListOf<Int>()
+    var lineStart = 0
+
+    while (lineStart <= content.lastIndex) {
+        val lineEndExclusive = content.indexOf('\n', lineStart).let { if (it == -1) content.length else it }
+        val lineText = content.substring(lineStart, lineEndExclusive)
+        if (lineText.trim() == "$$" && codeBlocks.none { range -> lineStart in range }) {
+            fenceLines += lineStart
+        }
+        if (lineEndExclusive == content.length) break
+        lineStart = lineEndExclusive + 1
+    }
+
+    if (fenceLines.size % 2 == 0) return content
+
+    return buildString {
+        append(content.trimEnd())
+        append('\n')
+        append("$$")
+    }
 }

@@ -75,6 +75,7 @@ import me.rerere.hugeicons.stroke.Tick01
 import me.rerere.rikkahub.ui.components.table.DataTable
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.theme.JetbrainsMono
+import me.rerere.rikkahub.utils.preprocessMarkdownForRender
 import me.rerere.rikkahub.utils.toDp
 import org.intellij.markdown.IElementType
 import org.intellij.markdown.MarkdownElementTypes
@@ -96,45 +97,8 @@ private val parser by lazy {
     MarkdownParser(flavour)
 }
 
-private val INLINE_LATEX_REGEX = Regex("\\\\\\((.+?)\\\\\\)")
-private val BLOCK_LATEX_REGEX = Regex("\\\\\\[(.+?)\\\\\\]", RegexOption.DOT_MATCHES_ALL)
 val THINKING_REGEX = Regex("<think>([\\s\\S]*?)(?:</think>|$)", RegexOption.DOT_MATCHES_ALL)
-private val CODE_BLOCK_REGEX = Regex("```[\\s\\S]*?```|`[^`\n]*`", RegexOption.DOT_MATCHES_ALL)
 private val BREAK_LINE_REGEX = Regex("(?i)<br\\s*/?>")
-
-// 预处理markdown内容
-private fun preProcess(content: String): String {
-    // 先找出所有代码块的位置
-    val codeBlocks = mutableListOf<IntRange>()
-    CODE_BLOCK_REGEX.findAll(content).forEach { match ->
-        codeBlocks.add(match.range)
-    }
-
-    // 检查位置是否在代码块内
-    fun isInCodeBlock(position: Int): Boolean {
-        return codeBlocks.any { range -> position in range }
-    }
-
-    // 替换行内公式 \( ... \) 到 $ ... $，但跳过代码块内的内容
-    var result = INLINE_LATEX_REGEX.replace(content) { matchResult ->
-        if (isInCodeBlock(matchResult.range.first)) {
-            matchResult.value // 保持原样
-        } else {
-            "$" + matchResult.groupValues[1] + "$"
-        }
-    }
-
-    // 替换块级公式 \[ ... \] 到 $$ ... $$，但跳过代码块内的内容
-    result = BLOCK_LATEX_REGEX.replace(result) { matchResult ->
-        if (isInCodeBlock(matchResult.range.first)) {
-            matchResult.value // 保持原样
-        } else {
-            "$$" + matchResult.groupValues[1] + "$$"
-        }
-    }
-
-    return result
-}
 
 @Preview(showBackground = true)
 @Composable
@@ -195,7 +159,7 @@ private fun ASTNode.containsHtmlBlocks(): Boolean {
 }
 
 private fun parseMarkdown(content: String): MarkdownParseResult {
-    val preprocessed = preProcess(content)
+    val preprocessed = preprocessMarkdownForRender(content)
     val astTree = parser.buildMarkdownTreeFromString(preprocessed)
     return MarkdownParseResult(preprocessed, astTree, astTree.containsHtmlBlocks())
 }
