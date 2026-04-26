@@ -15,14 +15,14 @@ plugins {
 
 android {
     namespace = "me.rerere.rikkahub"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 151
-        versionName = "2.1.8"
+        targetSdk = 37
+        versionCode = 153
+        versionName = "2.1.10"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -221,6 +221,7 @@ dependencies {
 
     // coil
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.okhttp)
     implementation(libs.coil.svg)
 

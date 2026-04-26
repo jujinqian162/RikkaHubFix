@@ -325,6 +325,7 @@ class ChatCompletionsAPI(
                         val siliconflowThinkingModels = setOf(
                             "Pro/moonshotai/Kimi-K2.5",
                             "Pro/zai-org/GLM-5",
+                            "Pro/zai-org/GLM-5.1",
                             "Pro/zai-org/GLM-4.7",
                             "deepseek-ai/DeepSeek-V3.2",
                             "Pro/deepseek-ai/DeepSeek-V3.2",
@@ -359,6 +360,15 @@ class ChatCompletionsAPI(
                         put("thinking", buildJsonObject {
                             put("type", if (!level.isEnabled) "disabled" else "enabled")
                         })
+                    }
+
+                    "api.deepseek.com" -> {
+                        put("thinking", buildJsonObject {
+                            put("type", if (!level.isEnabled) "disabled" else "enabled")
+                        })
+                        if (level.isEnabled && level != ReasoningLevel.AUTO) {
+                            put("reasoning_effort", level.effort)
+                        }
                     }
 
                     else -> {
@@ -399,11 +409,10 @@ class ChatCompletionsAPI(
 
     private fun buildMessages(messages: List<UIMessage>) = buildJsonArray {
         val filteredMessages = messages.filter { it.isValidToUpload() }
-        val lastUserMessageIndex = filteredMessages.indexOfLast { it.role == MessageRole.USER }
 
-        filteredMessages.forEachIndexed { index, message ->
+        filteredMessages.forEach { message ->
             if (message.role == MessageRole.ASSISTANT) {
-                addAssistantMessages(message, index > lastUserMessageIndex)
+                addAssistantMessages(message, includeReasoning = true)
             } else {
                 addNonAssistantMessage(message)
             }
