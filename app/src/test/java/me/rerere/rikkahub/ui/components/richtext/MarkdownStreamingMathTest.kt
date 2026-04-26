@@ -21,11 +21,25 @@ class MarkdownStreamingMathTest {
     @Test
     fun `unclosed block math keeps plus and minus lines inside math block during streaming`() {
         val content = """
-            $$
+            \[
             A = \begin{bmatrix}
             1 & 2 \\
-            +3 & 4 \\
-            -5 & 6
+            3 & 4
+            \end{bmatrix}
+
+            +
+
+            B = \begin{bmatrix}
+            5 & 6 \\
+            7 & 8
+            \end{bmatrix}
+
+            -
+
+            C = \begin{bmatrix}
+            1 & 1 \\
+            1 & 1
+            \end{bmatrix}
         """.trimIndent()
 
         val preprocessed = preprocessMarkdownForRender(content)

@@ -11,51 +11,10 @@ import { getCodePreviewLanguage } from "~/components/workbench/code-preview-lang
 import { useOptionalWorkbench } from "~/components/workbench/workbench-context";
 import { useSettingsStore } from "~/stores";
 import { CodeBlock } from "./code-block";
+import { preProcessMarkdown } from "./preprocess";
 import "katex/dist/katex.min.css";
 import "./markdown.css";
 import "streamdown/styles.css";
-
-// Regex patterns for preprocessing
-const INLINE_LATEX_REGEX = /\\\((.+?)\\\)/g;
-const BLOCK_LATEX_REGEX = /\\\[(.+?)\\\]/gs;
-const CODE_BLOCK_REGEX = /```[\s\S]*?```|`[^`\n]*`/g;
-
-// Preprocess markdown content
-function preProcess(content: string): string {
-  // Find all code block positions
-  const codeBlocks: { start: number; end: number }[] = [];
-  let match;
-  const codeBlockRegex = new RegExp(CODE_BLOCK_REGEX.source, "g");
-  while ((match = codeBlockRegex.exec(content)) !== null) {
-    codeBlocks.push({ start: match.index, end: match.index + match[0].length });
-  }
-
-  // Check if position is inside a code block
-  const isInCodeBlock = (position: number): boolean => {
-    return codeBlocks.some((range) => position >= range.start && position < range.end);
-  };
-
-  // Replace inline formulas \( ... \) to $ ... $, skip code blocks
-  let result = content.replace(
-    new RegExp(INLINE_LATEX_REGEX.source, "g"),
-    (match, group1, offset) => {
-      if (isInCodeBlock(offset)) {
-        return match;
-      }
-      return `$${group1}$`;
-    },
-  );
-
-  // Replace block formulas \[ ... \] to $$ ... $$, skip code blocks
-  result = result.replace(new RegExp(BLOCK_LATEX_REGEX.source, "gs"), (match, group1, offset) => {
-    if (isInCodeBlock(offset)) {
-      return match;
-    }
-    return `$$${group1}$$`;
-  });
-
-  return result;
-}
 
 type MarkdownProps = {
   content: string;
@@ -85,7 +44,7 @@ export default function Markdown({
   const { t } = useTranslation("markdown");
   const workbench = useOptionalWorkbench();
   const displaySetting = useSettingsStore((state) => state.settings?.displaySetting);
-  const processedContent = React.useMemo(() => preProcess(content), [content]);
+  const processedContent = React.useMemo(() => preProcessMarkdown(content), [content]);
   const handlePreviewCode = React.useCallback(
     (language: string, code: string) => {
       if (!allowCodePreview || !workbench) return;
@@ -113,9 +72,9 @@ export default function Markdown({
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex, rehypeRaw]}
         plugins={{ cjk: cjk }}
-        animated={{ animation: "fadeIn", sep: 'word', duration: 150 }}
+        animated={{ animation: "fadeIn", sep: "word", duration: 150 }}
         isAnimating={isAnimating}
-        controls={{code: false, mermaid: false}}
+        controls={{ code: false, mermaid: false }}
         components={{
           pre: ({ children }) => <>{children}</>,
           code: ({ className, children, ...props }) => {
