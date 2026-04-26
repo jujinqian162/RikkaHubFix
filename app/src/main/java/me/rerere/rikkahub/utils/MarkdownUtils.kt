@@ -83,7 +83,9 @@ fun preprocessMarkdownForRender(content: String): String {
         }
     }
 
-    return closeTrailingUnmatchedDollarMathBlock(result)
+    return protectDollarMathBlocksForMarkdownParser(
+        closeTrailingUnmatchedDollarMathBlock(result)
+    )
 }
 
 private fun closeTrailingUnmatchedDisplayBracketMath(content: String): String {
@@ -126,4 +128,61 @@ private fun closeTrailingUnmatchedDollarMathBlock(content: String): String {
         append('\n')
         append("$$")
     }
+}
+
+private fun protectDollarMathBlocksForMarkdownParser(content: String): String {
+    val codeBlocks = codeBlockRegex.findAll(content).map { it.range }.toList()
+    val result = StringBuilder(content.length)
+    var lineStart = 0
+    var inMathBlock = false
+
+    fun isInCodeBlock(position: Int): Boolean {
+        return codeBlocks.any { range -> position in range }
+    }
+
+    while (lineStart <= content.length) {
+        val lineEndExclusive = content.indexOf('\n', lineStart).let { if (it == -1) content.length else it }
+        val lineText = content.substring(lineStart, lineEndExclusive)
+        val isMathFence = lineText.trim() == "$$" && !isInCodeBlock(lineStart)
+
+        val outputLine = when {
+            isMathFence -> {
+                inMathBlock = !inMathBlock
+                lineText
+            }
+
+            inMathBlock -> protectMathLineForMarkdownParser(lineText)
+
+            else -> lineText
+        }
+
+        if (!(inMathBlock && !isMathFence && outputLine.isEmpty())) {
+            result.append(outputLine)
+            if (lineEndExclusive < content.length) {
+                result.append('\n')
+            }
+        } else if (lineEndExclusive < content.length && result.endsWith("\n").not()) {
+            result.append('\n')
+        }
+
+        if (lineEndExclusive == content.length) break
+        lineStart = lineEndExclusive + 1
+    }
+
+    return result.toString()
+}
+
+private fun protectMathLineForMarkdownParser(line: String): String {
+    if (line.isBlank()) return ""
+
+    val leadingSpaces = line.takeWhile { it == ' ' || it == '\t' }
+    val rest = line.drop(leadingSpaces.length)
+    if (rest.isEmpty()) return ""
+
+    val marker = rest.first()
+    if ((marker == '+' || marker == '-') && (rest.length == 1 || rest[1].isWhitespace())) {
+        return leadingSpaces + "{}" + rest
+    }
+
+    return line
 }

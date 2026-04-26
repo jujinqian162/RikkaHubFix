@@ -57,6 +57,38 @@ class MarkdownStreamingMathTest {
     }
 
     @Test
+    fun `complete block math with blank lines around operators stays math when reopened from history`() {
+        val content = """
+            $$
+            A = \begin{bmatrix}
+            1 & 2 \\
+            3 & 4
+            \end{bmatrix}
+
+            +
+
+            B = \begin{bmatrix}
+            5 & 6 \\
+            7 & 8
+            \end{bmatrix}
+            $$
+        """.trimIndent()
+
+        val preprocessed = preprocessMarkdownForRender(content)
+        val tree = parser.buildMarkdownTreeFromString(preprocessed)
+
+        assertEquals(
+            "complete historical math block should stay a single math block",
+            1,
+            countNodesOfType(tree, GFMElementTypes.BLOCK_MATH)
+        )
+        assertFalse(
+            "blank lines must not let an operator line escape into markdown list parsing",
+            containsNodeType(tree, MarkdownElementTypes.UNORDERED_LIST)
+        )
+    }
+
+    @Test
     fun `closed block math is left unchanged`() {
         val content = """
             $$
