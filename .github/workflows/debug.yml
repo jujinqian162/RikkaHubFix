@@ -18,6 +18,15 @@ jobs:
           java-version: '17'
           cache: gradle
 
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install web-ui dependencies
+        working-directory: web-ui
+        run: bun install --frozen-lockfile
+
       - name: Ensure google-services placeholder exists
         shell: bash
         run: |
