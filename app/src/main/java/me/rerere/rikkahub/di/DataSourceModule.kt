@@ -51,6 +51,7 @@ val dataSourceModule = module {
     single {
         val context: Context = get()
         Room.databaseBuilder(context, AppDatabase::class.java, "rikka_hub")
+            .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
             .addMigrations(Migration_6_7, Migration_11_12, Migration_13_14, Migration_14_15, Migration_15_16)
             .addCallback(object : RoomDatabase.Callback() {
                 override fun onOpen(db: SupportSQLiteDatabase) {
@@ -178,7 +179,11 @@ val dataSourceModule = module {
             .addNetworkInterceptor { chain ->
                 val request = chain.request()
                 val contentTypeHeader = request.header("Content-Type")
-                if (contentTypeHeader != null && contentTypeHeader.contains(";")) {
+                if (
+                    contentTypeHeader != null &&
+                    contentTypeHeader.contains(";") &&
+                    contentTypeHeader.substringBefore(";").trim().equals("application/json", ignoreCase = true)
+                ) {
                     chain.proceed(
                         request.newBuilder()
                             .header("Content-Type", contentTypeHeader.substringBefore(";").trim())

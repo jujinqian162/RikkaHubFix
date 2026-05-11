@@ -222,7 +222,7 @@ fun List<UIMessage>.handleMessageChunk(chunk: MessageChunk, model: Model? = null
         "messages must not be empty"
     }
     val choice = chunk.choices.getOrNull(0) ?: return this
-    val message = choice.delta ?: choice.message ?: throw Exception("delta/message is null")
+    val message = choice.delta ?: choice.message ?: return this
     if (this.last().role != message.role) {
         return this + (UIMessage(modelId = model?.id, role = message.role, parts = emptyList()) + chunk)
     } else {
@@ -336,6 +336,17 @@ sealed class ToolApprovalState {
     data class Answered(val answer: String) : ToolApprovalState()
 }
 
+fun ToolApprovalState.canResumeToolExecution(): Boolean {
+    return when (this) {
+        ToolApprovalState.Approved -> true
+        is ToolApprovalState.Denied -> true
+        is ToolApprovalState.Answered -> true
+        ToolApprovalState.Auto,
+        ToolApprovalState.Pending,
+            -> false
+    }
+}
+
 @Serializable
 sealed class UIMessagePart {
     abstract val metadata: JsonObject?
@@ -440,6 +451,9 @@ sealed class UIMessagePart {
 
         /** Whether the tool is pending user approval */
         val isPending: Boolean get() = approvalState is ToolApprovalState.Pending
+
+        /** Whether generation can resume and handle this tool immediately */
+        val canResumeExecution: Boolean get() = !isExecuted && approvalState.canResumeToolExecution()
 
         /** Parse input string as JsonElement */
         fun inputAsJson(): JsonElement = runCatching {

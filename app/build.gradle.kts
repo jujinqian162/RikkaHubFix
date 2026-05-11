@@ -15,14 +15,14 @@ plugins {
 
 android {
     namespace = "me.rerere.rikkahub"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "me.rerere.rikkahub"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 151
-        versionName = "2.1.8"
+        targetSdk = 37
+        versionCode = 156
+        versionName = "2.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -221,8 +221,10 @@ dependencies {
 
     // coil
     implementation(libs.coil.compose)
+    implementation(libs.coil.gif)
     implementation(libs.coil.okhttp)
     implementation(libs.coil.svg)
+    implementation(libs.coil.cache.control)
 
     // serialization
     implementation(libs.kotlinx.serialization.json)
@@ -286,7 +288,7 @@ dependencies {
     implementation(project(":document"))
     implementation(project(":highlight"))
     implementation(project(":search"))
-    implementation(project(":tts"))
+    implementation(project(":speech"))
     implementation(project(":common"))
     implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.jar", "*.aar"))))
     implementation(kotlin("reflect"))

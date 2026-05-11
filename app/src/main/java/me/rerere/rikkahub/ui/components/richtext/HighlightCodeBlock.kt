@@ -63,8 +63,15 @@ import me.rerere.highlight.buildHighlightText
 import me.rerere.hugeicons.HugeIcons
 import me.rerere.hugeicons.stroke.ArrowDown01
 import me.rerere.hugeicons.stroke.ArrowUp01
+import me.rerere.hugeicons.stroke.Code
+import me.rerere.hugeicons.stroke.Copy01
+import me.rerere.hugeicons.stroke.Download04
+import me.rerere.hugeicons.stroke.Eye
+import me.rerere.hugeicons.stroke.View
 import me.rerere.rikkahub.R
 import me.rerere.rikkahub.Screen
+import me.rerere.rikkahub.ui.components.webview.WebView
+import me.rerere.rikkahub.ui.components.webview.rememberWebViewState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
 import me.rerere.rikkahub.ui.context.Navigator
@@ -78,6 +85,7 @@ import me.rerere.rikkahub.utils.toDp
 import kotlin.time.Clock
 
 private const val COLLAPSE_LINES = 10
+private val PREVIEWABLE_LANGUAGES = setOf("html", "svg")
 
 @Composable
 fun HighlightCodeBlock(
@@ -98,6 +106,11 @@ fun HighlightCodeBlock(
     val navController = LocalNavController.current
     val context = LocalContext.current
     val settings = LocalSettings.current
+    val normalizedLanguage = remember(language) { language.lowercase() }
+    val canInlinePreview = completeCodeBlock && normalizedLanguage in PREVIEWABLE_LANGUAGES
+    var previewMode by remember(canInlinePreview, code, normalizedLanguage) {
+        mutableStateOf(canInlinePreview)
+    }
 
     var isExpanded by remember(settings.displaySetting.codeBlockAutoCollapse) {
         mutableStateOf(!settings.displaySetting.codeBlockAutoCollapse)
@@ -140,13 +153,28 @@ fun HighlightCodeBlock(
                 code = code,
                 createDocumentLauncher = createDocumentLauncher,
                 navController = navController,
+                completeCodeBlock = completeCodeBlock,
+                previewMode = previewMode,
+                canInlinePreview = canInlinePreview,
+                onTogglePreviewMode = {
+                    previewMode = !previewMode
+                },
             )
         }
         Column(
             modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 8.dp)
         ) {
             when {
-                completeCodeBlock && language == "mermaid" -> {
+                canInlinePreview && previewMode -> {
+                    CodeBlockPreview(
+                        code = code,
+                        language = normalizedLanguage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                    )
+                }
+                completeCodeBlock && normalizedLanguage == "mermaid" -> {
                     Mermaid(
                         code = code,
                         modifier = Modifier.fillMaxWidth(),
@@ -332,6 +360,10 @@ private fun HighlightCodeActions(
     code: String,
     createDocumentLauncher: ManagedActivityResultLauncher<String, Uri?>,
     navController: Navigator,
+    completeCodeBlock: Boolean = true,
+    previewMode: Boolean = false,
+    canInlinePreview: Boolean = false,
+    onTogglePreviewMode: () -> Unit = {},
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -346,83 +378,125 @@ private fun HighlightCodeActions(
         )
         Spacer(Modifier.weight(1f))
         Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(4.dp))
-                .clickable {
-                    scope.launch {
-                        clipboardManager.setClipEntry(
-                            ClipEntry(
-                                ClipData.newPlainText("code", code),
-                            )
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val iconSize = 16.dp
+            val iconTint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+
+            Icon(
+                imageVector = HugeIcons.Download04,
+                contentDescription = stringResource(id = R.string.chat_page_save),
+                tint = iconTint,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .onClick {
+                        val extension = when (language.lowercase()) {
+                            "kotlin" -> "kt"
+                            "java" -> "java"
+                            "python" -> "py"
+                            "javascript" -> "js"
+                            "typescript" -> "ts"
+                            "cpp", "c++" -> "cpp"
+                            "c" -> "c"
+                            "html" -> "html"
+                            "css" -> "css"
+                            "xml" -> "xml"
+                            "json" -> "json"
+                            "yaml", "yml" -> "yml"
+                            "markdown", "md" -> "md"
+                            "sql" -> "sql"
+                            "sh", "bash" -> "sh"
+                            "svg" -> "svg"
+                            else -> "txt"
+                        }
+                        createDocumentLauncher.launch(
+                            "code_${
+                                Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
+                            }.$extension"
                         )
                     }
-                },
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = stringResource(id = R.string.chat_page_save),
-                fontSize = 12.sp,
-                lineHeight = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.clickable {
-                    val extension = when (language.lowercase()) {
-                        "kotlin" -> "kt"
-                        "java" -> "java"
-                        "python" -> "py"
-                        "javascript" -> "js"
-                        "typescript" -> "ts"
-                        "cpp", "c++" -> "cpp"
-                        "c" -> "c"
-                        "html" -> "html"
-                        "css" -> "css"
-                        "xml" -> "xml"
-                        "json" -> "json"
-                        "yaml", "yml" -> "yml"
-                        "markdown", "md" -> "md"
-                        "sql" -> "sql"
-                        "sh", "bash" -> "sh"
-                        "svg" -> "svg"
-                        else -> "txt"
-                    }
-                    createDocumentLauncher.launch(
-                        "code_${
-                            Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault())
-                        }.$extension"
-                    )
-                }
+                    .padding(4.dp)
+                    .size(iconSize)
             )
 
-            Text(
-                text = stringResource(id = R.string.code_block_copy),
-                fontSize = 12.sp,
-                lineHeight = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.clickable {
-                    scope.launch {
-                        clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("code", code)))
+            Icon(
+                imageVector = HugeIcons.Copy01,
+                contentDescription = stringResource(id = R.string.code_block_copy),
+                tint = iconTint,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .onClick {
+                        scope.launch {
+                            clipboardManager.setClipEntry(ClipEntry(ClipData.newPlainText("code", code)))
+                        }
                     }
-                }
+                    .padding(4.dp)
+                    .size(iconSize)
             )
 
-            if (language == "html" || language == "svg") {
-                Text(
-                    text = stringResource(id = R.string.code_block_preview),
-                    fontSize = 12.sp,
-                    lineHeight = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+            val normalizedLanguage = language.lowercase()
+            if (canInlinePreview) {
+                Icon(
+                    imageVector = if (previewMode) HugeIcons.Code else HugeIcons.View,
+                    contentDescription = if (previewMode) "Code" else stringResource(id = R.string.code_block_preview),
+                    tint = iconTint,
                     modifier = Modifier
-                        .clickable {
-                            val content = if (language == "svg") {
-                                // 将 SVG 包裹在 HTML 中以便 WebView 正确渲染
-                                """<!DOCTYPE html><html><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">$code</body></html>"""
-                            } else {
-                                code
-                            }
+                        .clip(RoundedCornerShape(4.dp))
+                        .onClick {
+                            onTogglePreviewMode()
+                        }
+                        .padding(4.dp)
+                        .size(iconSize)
+                )
+            }
+
+            if (completeCodeBlock && normalizedLanguage in PREVIEWABLE_LANGUAGES) {
+                Icon(
+                    imageVector = HugeIcons.Eye,
+                    contentDescription = stringResource(id = R.string.code_block_preview),
+                    tint = iconTint,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .onClick {
+                            val content = buildCodePreviewHtml(code = code, language = normalizedLanguage)
                             navController.navigate(Screen.WebView(content = content.base64Encode()))
                         }
+                        .padding(4.dp)
+                        .size(iconSize)
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun CodeBlockPreview(
+    code: String,
+    language: String,
+    modifier: Modifier = Modifier,
+) {
+    val state = rememberWebViewState(
+        data = buildCodePreviewHtml(code = code, language = language),
+        baseUrl = "https://rikkahub.local",
+        mimeType = "text/html",
+        settings = {
+            builtInZoomControls = true
+            displayZoomControls = false
+        }
+    )
+
+    WebView(
+        state = state,
+        modifier = modifier.clip(RoundedCornerShape(4.dp)),
+    )
+}
+
+private fun buildCodePreviewHtml(code: String, language: String): String {
+    return if (language == "svg") {
+        """<!DOCTYPE html><html><body style="margin:0;display:flex;justify-content:center;align-items:center;min-height:100vh;">$code</body></html>"""
+    } else {
+        code
     }
 }
 

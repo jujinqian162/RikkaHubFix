@@ -51,14 +51,17 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.TextUnitType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastForEach
 import androidx.core.graphics.toColorInt
@@ -156,6 +159,30 @@ fun MarkdownNew(
 // ---- Node dispatching ----
 
 @Composable
+private fun HtmlStyledElement(
+    element: Element,
+    content: @Composable () -> Unit,
+) {
+    val baseTextStyle = LocalTextStyle.current
+    val density = LocalDensity.current
+    val elementStyle = remember(element.attr("style"), density, baseTextStyle) {
+        element.attr("style").takeIf { it.isNotBlank() }?.let {
+            parseBlockTextStyle(
+                style = it,
+                density = density,
+                baseTextStyle = baseTextStyle,
+            )
+        }
+    }
+
+    if (elementStyle != null) {
+        ProvideTextStyle(baseTextStyle.merge(elementStyle), content)
+    } else {
+        content()
+    }
+}
+
+@Composable
 private fun HtmlBodyNode(node: Node, onClickCitation: (String) -> Unit) {
     when (node) {
         is Element -> HtmlBlockElement(element = node, onClickCitation = onClickCitation)
@@ -196,9 +223,13 @@ private fun HtmlBlockElement(
 
         "pre" -> HtmlCodeBlock(element = element)
 
-        "blockquote" -> HtmlBlockquote(element = element, onClickCitation = onClickCitation)
+        "blockquote" -> HtmlStyledElement(element = element) {
+            HtmlBlockquote(element = element, onClickCitation = onClickCitation)
+        }
 
-        "table" -> HtmlTable(element = element, onClickCitation = onClickCitation)
+        "table" -> HtmlStyledElement(element = element) {
+            HtmlTable(element = element, onClickCitation = onClickCitation)
+        }
 
         "hr" -> HorizontalDivider(
             modifier = Modifier.padding(vertical = 16.dp),
@@ -227,20 +258,24 @@ private fun HtmlBlockElement(
             // Block-level math span emitted directly into body
             if (element.hasClass("math") && element.attr("inline") != "true") {
                 HtmlMathBlock(formula = element.text())
+            } else {
+                HtmlInlineGroup(nodes = listOf(element), onClickCitation = onClickCitation)
             }
         }
 
-        "details" -> HtmlDetails(element = element, onClickCitation = onClickCitation)
+        "details" -> HtmlStyledElement(element = element) {
+            HtmlDetails(element = element, onClickCitation = onClickCitation)
+        }
 
         "progress" -> HtmlProgress(element = element)
 
-        "div" -> {
+        "div" -> HtmlStyledElement(element = element) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 element.childNodes().fastForEach { HtmlBodyNode(it, onClickCitation) }
             }
         }
 
-        else -> {
+        else -> HtmlStyledElement(element = element) {
             // Generic fallback: recurse into children
             element.childNodes().forEach { HtmlBodyNode(it, onClickCitation) }
         }
@@ -251,6 +286,33 @@ private fun HtmlBlockElement(
 
 @Composable
 private fun HtmlParagraph(element: Element, onClickCitation: (String) -> Unit) {
+    val baseTextStyle = LocalTextStyle.current
+    val density = LocalDensity.current
+    val paragraphStyle = remember(element.attr("style"), density, baseTextStyle) {
+        element.attr("style").takeIf { it.isNotBlank() }?.let {
+            parseBlockTextStyle(
+                style = it,
+                density = density,
+                baseTextStyle = baseTextStyle,
+            )
+        }
+    }
+
+    if (paragraphStyle != null) {
+        ProvideTextStyle(baseTextStyle.merge(paragraphStyle)) {
+            HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density)
+        }
+    } else {
+        HtmlParagraphContent(element = element, onClickCitation = onClickCitation, density = density)
+    }
+}
+
+@Composable
+private fun HtmlParagraphContent(
+    element: Element,
+    onClickCitation: (String) -> Unit,
+    density: Density,
+) {
     val hasImages = element.select("img").isNotEmpty()
     // A span.math with inline != "true" is a block math element
     val hasBlockMath = element.select("span.math").any { it.attr("inline") != "true" }
@@ -272,9 +334,15 @@ private fun HtmlParagraph(element: Element, onClickCitation: (String) -> Unit) {
     val hasInlineMath = element.select("span.math").any { it.attr("inline") == "true" }
     val colorScheme = MaterialTheme.colorScheme
     val textStyle = LocalTextStyle.current
-    val density = LocalDensity.current
 
-    val (annotatedString, inlineContents) = remember(element.outerHtml(), enableLatexRendering) {
+    val (annotatedString, inlineContents) = remember(
+        element.outerHtml(),
+        enableLatexRendering,
+        colorScheme,
+        density,
+        textStyle,
+        onClickCitation,
+    ) {
         val contents = mutableMapOf<String, InlineTextContent>()
         val text = buildAnnotatedString {
             element.childNodes().forEach { child ->
@@ -297,6 +365,7 @@ private fun HtmlParagraph(element: Element, onClickCitation: (String) -> Unit) {
         inlineContent = inlineContents,
         softWrap = true,
         overflow = TextOverflow.Visible,
+        modifier = Modifier.fillMaxWidth(),
         style = textStyle.copy(
             lineHeight = if (hasInlineMath && enableLatexRendering)
                 TextUnit.Unspecified
@@ -320,7 +389,7 @@ private fun HtmlHeading(element: Element, onClickCitation: (String) -> Unit) {
     val verticalPadding = when (level) {
         1 -> 16.dp; 2 -> 14.dp; 3 -> 12.dp; 4 -> 10.dp; 5 -> 8.dp; else -> 6.dp
     }
-    ProvideTextStyle(headingStyle) {
+    ProvideTextStyle(LocalTextStyle.current.merge(headingStyle)) {
         Box(modifier = Modifier.padding(vertical = verticalPadding)) {
             HtmlParagraph(element = element, onClickCitation = onClickCitation)
         }
@@ -334,20 +403,22 @@ private fun HtmlList(
     onClickCitation: (String) -> Unit,
     level: Int,
 ) {
-    Column(modifier = Modifier.padding(start = (level * 8).dp, top = 4.dp, bottom = 4.dp)) {
-        val bulletBase = when (level % 3) {
-            0 -> "•"; 1 -> "◦"; else -> "▪"
-        }
-        var orderedIndex = 1
-        element.children().fastForEach { item ->
-            if (item.tagName().lowercase() == "li") {
-                val bullet = if (ordered) "${orderedIndex++}. " else "$bulletBase "
-                HtmlListItem(
-                    item = item,
-                    bulletText = bullet,
-                    onClickCitation = onClickCitation,
-                    level = level,
-                )
+    HtmlStyledElement(element = element) {
+        Column(modifier = Modifier.padding(start = (level * 8).dp, top = 4.dp, bottom = 4.dp)) {
+            val bulletBase = when (level % 3) {
+                0 -> "•"; 1 -> "◦"; else -> "▪"
+            }
+            var orderedIndex = 1
+            element.children().fastForEach { item ->
+                if (item.tagName().lowercase() == "li") {
+                    val bullet = if (ordered) "${orderedIndex++}. " else "$bulletBase "
+                    HtmlListItem(
+                        item = item,
+                        bulletText = bullet,
+                        onClickCitation = onClickCitation,
+                        level = level,
+                    )
+                }
             }
         }
     }
@@ -364,85 +435,87 @@ private fun HtmlListItem(
     val checkboxInput = item.selectFirst("input[type=checkbox]")
     val isChecked = checkboxInput?.hasAttr("checked") == true
 
-    Column {
-        Row(
-            verticalAlignment = Alignment.Top,
-            modifier = Modifier.padding(vertical = 2.dp),
-        ) {
-            if (isTaskItem && checkboxInput != null) {
-                // Checkbox indicator
-                Surface(
-                    shape = RoundedCornerShape(2.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                    modifier = Modifier.padding(end = 4.dp, top = 2.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .padding(2.dp)
-                            .size(LocalTextStyle.current.fontSize.toDp() * 0.8f),
-                        contentAlignment = Alignment.Center,
+    HtmlStyledElement(element = item) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.Top,
+                modifier = Modifier.padding(vertical = 2.dp),
+            ) {
+                if (isTaskItem && checkboxInput != null) {
+                    // Checkbox indicator
+                    Surface(
+                        shape = RoundedCornerShape(2.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        modifier = Modifier.padding(end = 4.dp, top = 2.dp),
                     ) {
-                        if (isChecked) {
-                            Icon(
-                                imageVector = HugeIcons.Tick01,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                            )
+                        Box(
+                            modifier = Modifier
+                                .padding(2.dp)
+                                .size(LocalTextStyle.current.fontSize.toDp() * 0.8f),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (isChecked) {
+                                Icon(
+                                    imageVector = HugeIcons.Tick01,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
+                } else {
+                    Text(
+                        text = bulletText,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.alignByBaseline(),
+                    )
                 }
-            } else {
-                Text(
-                    text = bulletText,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.alignByBaseline(),
-                )
-            }
 
-            // Item inline content (excluding nested lists and the checkbox input)
-            Column(modifier = Modifier.weight(1f)) {
-                val directContentNodes = item.childNodes().filter { node ->
-                    !(node is Element &&
-                        (node.tagName().lowercase() in listOf("ul", "ol") ||
-                            (node.tagName().lowercase() == "input" && node.attr("type") == "checkbox")))
-                }
-                // Group consecutive inline nodes and render as a single paragraph
-                val groups = mutableListOf<MutableList<Node>>()
-                directContentNodes.fastForEach { node ->
-                    if (node is Element && node.tagName().lowercase() == "p") {
-                        groups.add(mutableListOf(node))
-                    } else {
-                        val last = groups.lastOrNull()
-                        if (last != null && last.none {
-                                it is Element && (it as Element).tagName().lowercase() == "p"
-                            }) {
-                            last.add(node)
-                        } else {
+                // Item inline content (excluding nested lists and the checkbox input)
+                Column(modifier = Modifier.weight(1f)) {
+                    val directContentNodes = item.childNodes().filter { node ->
+                        !(node is Element &&
+                            (node.tagName().lowercase() in listOf("ul", "ol") ||
+                                (node.tagName().lowercase() == "input" && node.attr("type") == "checkbox")))
+                    }
+                    // Group consecutive inline nodes and render as a single paragraph
+                    val groups = mutableListOf<MutableList<Node>>()
+                    directContentNodes.fastForEach { node ->
+                        if (node is Element && node.tagName().lowercase() == "p") {
                             groups.add(mutableListOf(node))
+                        } else {
+                            val last = groups.lastOrNull()
+                            if (last != null && last.none {
+                                    it is Element && it.tagName().lowercase() == "p"
+                                }) {
+                                last.add(node)
+                            } else {
+                                groups.add(mutableListOf(node))
+                            }
+                        }
+                    }
+                    groups.fastForEach { group ->
+                        val first = group.firstOrNull()
+                        if (first is Element && first.tagName().lowercase() == "p") {
+                            HtmlParagraph(element = first, onClickCitation = onClickCitation)
+                        } else {
+                            HtmlInlineGroup(nodes = group, onClickCitation = onClickCitation)
                         }
                     }
                 }
-                groups.fastForEach { group ->
-                    val first = group.firstOrNull()
-                    if (first is Element && first.tagName().lowercase() == "p") {
-                        HtmlParagraph(element = first, onClickCitation = onClickCitation)
-                    } else {
-                        HtmlInlineGroup(nodes = group, onClickCitation = onClickCitation)
-                    }
-                }
             }
-        }
 
-        // Nested lists
-        item.children().fastForEach { child ->
-            val tag = child.tagName().lowercase()
-            if (tag == "ul" || tag == "ol") {
-                HtmlList(
-                    element = child,
-                    ordered = tag == "ol",
-                    onClickCitation = onClickCitation,
-                    level = level + 1,
-                )
+            // Nested lists
+            item.children().fastForEach { child ->
+                val tag = child.tagName().lowercase()
+                if (tag == "ul" || tag == "ol") {
+                    HtmlList(
+                        element = child,
+                        ordered = tag == "ol",
+                        onClickCitation = onClickCitation,
+                        level = level + 1,
+                    )
+                }
             }
         }
     }
@@ -517,10 +590,12 @@ private fun HtmlTable(element: Element, onClickCitation: (String) -> Unit) {
     val headers = List(columnCount) { col ->
         @Composable {
             if (col < headerElements.size) {
-                HtmlInlineGroup(
-                    nodes = headerElements[col].childNodes(),
-                    onClickCitation = onClickCitation,
-                )
+                HtmlStyledElement(element = headerElements[col]) {
+                    HtmlInlineGroup(
+                        nodes = headerElements[col].childNodes(),
+                        onClickCitation = onClickCitation,
+                    )
+                }
             }
         }
     }
@@ -531,10 +606,12 @@ private fun HtmlTable(element: Element, onClickCitation: (String) -> Unit) {
         List(columnCount) { col ->
             @Composable {
                 if (col < cellElements.size) {
-                    HtmlInlineGroup(
-                        nodes = cellElements[col].childNodes(),
-                        onClickCitation = onClickCitation,
-                    )
+                    HtmlStyledElement(element = cellElements[col]) {
+                        HtmlInlineGroup(
+                            nodes = cellElements[col].childNodes(),
+                            onClickCitation = onClickCitation,
+                        )
+                    }
                 }
             }
         }
@@ -587,9 +664,7 @@ private fun HtmlProgress(element: Element) {
     val progress = (value / max).coerceIn(0f, 1f)
 
     val style = element.attr("style")
-    val widthValue = style.split(";")
-        .mapNotNull { it.split(":").takeIf { p -> p.size == 2 }?.let { p -> p[0].trim() to p[1].trim() } }
-        .toMap()["width"] ?: element.attr("width")
+    val widthValue = parseCssDeclarations(style)["width"] ?: element.attr("width")
 
     val widthModifier = when {
         widthValue.endsWith("%") -> widthValue.removeSuffix("%").toFloatOrNull()
@@ -622,7 +697,14 @@ private fun HtmlInlineGroup(nodes: List<Node>, onClickCitation: (String) -> Unit
     val density = LocalDensity.current
 
     val key = remember(nodes) { nodes.joinToString("") { if (it is Element) it.outerHtml() else it.toString() } }
-    val (annotatedString, inlineContents) = remember(key, enableLatexRendering) {
+    val (annotatedString, inlineContents) = remember(
+        key,
+        enableLatexRendering,
+        colorScheme,
+        density,
+        textStyle,
+        onClickCitation,
+    ) {
         val contents = mutableMapOf<String, InlineTextContent>()
         val text = buildAnnotatedString {
             nodes.fastForEach { node ->
@@ -691,7 +773,14 @@ private fun HtmlInlineAsComposable(node: Node, onClickCitation: (String) -> Unit
                     val textStyle = LocalTextStyle.current
                     val density = LocalDensity.current
                     val enableLatexRendering = LocalSettings.current.displaySetting.enableLatexRendering
-                    val (annotated, inlineContents) = remember(node.outerHtml(), enableLatexRendering) {
+                    val (annotated, inlineContents) = remember(
+                        node.outerHtml(),
+                        enableLatexRendering,
+                        colorScheme,
+                        density,
+                        textStyle,
+                        onClickCitation,
+                    ) {
                         val contents = mutableMapOf<String, InlineTextContent>()
                         val text = buildAnnotatedString {
                             appendHtmlInlineElement(
@@ -747,41 +836,54 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
     enableLatexRendering: Boolean,
     onClickCitation: (String) -> Unit,
 ) {
-    fun recurse(el: Element) = appendHtmlInlineElement(
-        element = el,
-        colorScheme = colorScheme,
-        inlineContents = inlineContents,
-        density = density,
-        style = style,
-        enableLatexRendering = enableLatexRendering,
-        onClickCitation = onClickCitation,
-    )
+    val cssStyle = element.attr("style").takeIf { it.isNotBlank() }?.let {
+        parseInlineSpanStyle(
+            style = it,
+            density = density,
+            baseFontSize = style.fontSize,
+        )
+    }
 
-    fun recurseChildren(el: Element) = el.childNodes().fastForEach {
-        appendHtmlInlineNode(it, colorScheme, inlineContents, density, style, enableLatexRendering, onClickCitation)
+    fun recurseChildren(el: Element, inheritedStyle: TextStyle = style) = el.childNodes().fastForEach {
+        appendHtmlInlineNode(
+            node = it,
+            colorScheme = colorScheme,
+            inlineContents = inlineContents,
+            density = density,
+            style = inheritedStyle,
+            enableLatexRendering = enableLatexRendering,
+            onClickCitation = onClickCitation,
+        )
     }
 
     fun appendStyledChildren(spanStyle: SpanStyle) = withStyle(spanStyle) {
-        recurseChildren(element)
+        recurseChildren(element, style.merge(spanStyle.asTextStyle()))
+    }
+
+    fun appendElementChildren(tagStyle: SpanStyle = SpanStyle()) {
+        val elementStyle = tagStyle.merge(cssStyle ?: SpanStyle())
+        if (elementStyle == SpanStyle()) {
+            recurseChildren(element)
+        } else {
+            appendStyledChildren(elementStyle)
+        }
     }
 
     when (element.tagName().lowercase()) {
-        "b", "strong" -> withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { recurseChildren(element) }
+        "b", "strong" -> appendElementChildren(SpanStyle(fontWeight = FontWeight.SemiBold))
 
-        "i", "em" -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { recurseChildren(element) }
+        "i", "em" -> appendElementChildren(SpanStyle(fontStyle = FontStyle.Italic))
 
-        "del", "s", "strike" -> withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-            recurseChildren(element)
-        }
+        "del", "s", "strike" -> appendElementChildren(SpanStyle(textDecoration = TextDecoration.LineThrough))
 
-        "u" -> withStyle(SpanStyle(textDecoration = TextDecoration.Underline)) { recurseChildren(element) }
+        "u" -> appendElementChildren(SpanStyle(textDecoration = TextDecoration.Underline))
 
         "code" -> withStyle(
             SpanStyle(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 0.95.em,
                 background = colorScheme.secondaryContainer.copy(alpha = 0.2f),
-            )
+            ).merge(cssStyle ?: SpanStyle())
         ) {
             append(element.text())
         }
@@ -832,19 +934,18 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                 }
 
                 href.isNotEmpty() -> {
+                    val linkStyle = SpanStyle(
+                        color = colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                    ).merge(cssStyle ?: SpanStyle())
                     withLink(LinkAnnotation.Url(href)) {
-                        withStyle(
-                            SpanStyle(
-                                color = colorScheme.primary,
-                                textDecoration = TextDecoration.Underline,
-                            )
-                        ) {
-                            recurseChildren(element)
+                        withStyle(linkStyle) {
+                            recurseChildren(element, style.merge(linkStyle.asTextStyle()))
                         }
                     }
                 }
 
-                else -> recurseChildren(element)
+                else -> appendElementChildren()
             }
         }
 
@@ -877,45 +978,78 @@ private fun AnnotatedString.Builder.appendHtmlInlineElement(
                     }
                 }
             } else {
-                val inlineStyle = element.attr("style").takeIf { it.isNotBlank() }?.let(::parseInlineSpanStyle)
-                if (inlineStyle != null) {
-                    appendStyledChildren(inlineStyle)
-                } else {
-                    recurseChildren(element)
-                }
+                appendElementChildren()
             }
         }
 
         "font" -> {
-            val inlineStyle = buildFontTagStyle(element)
+            val inlineStyle = buildFontTagStyle(
+                element = element,
+                density = density,
+                baseFontSize = style.fontSize,
+            )
             if (inlineStyle != null) {
                 appendStyledChildren(inlineStyle)
             } else {
-                recurseChildren(element)
+                appendElementChildren()
             }
         }
 
         "br" -> append("\n")
 
-        else -> recurseChildren(element)
+        else -> appendElementChildren()
     }
 }
 
-private fun buildFontTagStyle(element: Element): SpanStyle? {
-    val color = element.attr("color").takeIf { it.isNotBlank() }?.let(::parseColor)
-    val baseStyle = element.attr("style").takeIf { it.isNotBlank() }?.let(::parseInlineSpanStyle)
-    if (color == null && baseStyle == null) return null
-    return (baseStyle ?: SpanStyle()).merge(SpanStyle(color = color ?: Color.Unspecified))
+private fun SpanStyle.asTextStyle(): TextStyle {
+    return TextStyle(
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        fontFamily = fontFamily,
+        letterSpacing = letterSpacing,
+        background = background,
+        textDecoration = textDecoration,
+    )
 }
 
-private fun parseInlineSpanStyle(style: String): SpanStyle? {
-    val properties = style
-        .split(";")
-        .mapNotNull { property ->
-            val parts = property.split(":", limit = 2)
-            if (parts.size == 2) parts[0].trim().lowercase() to parts[1].trim() else null
-        }
-        .toMap()
+private fun buildFontTagStyle(
+    element: Element,
+    density: Density,
+    baseFontSize: TextUnit,
+): SpanStyle? {
+    val color = element.attr("color").takeIf { it.isNotBlank() }?.let(::parseColor)
+    val styleAttr = element.attr("style").takeIf { it.isNotBlank() }?.let {
+        parseInlineSpanStyle(
+            style = it,
+            density = density,
+            baseFontSize = baseFontSize,
+        )
+    }
+    val sizeAttr = element.attr("size").takeIf { it.isNotBlank() }?.let {
+        parseLegacyFontSize(
+            fontSize = it,
+            density = density,
+            baseFontSize = baseFontSize,
+        )
+    }
+
+    var resolvedStyle = styleAttr ?: SpanStyle()
+    color?.let { resolvedStyle = resolvedStyle.merge(SpanStyle(color = it)) }
+    sizeAttr?.let { resolvedStyle = resolvedStyle.merge(SpanStyle(fontSize = it)) }
+
+    return resolvedStyle.takeIf {
+        color != null || styleAttr != null || sizeAttr != null
+    }
+}
+
+private fun parseInlineSpanStyle(
+    style: String,
+    density: Density,
+    baseFontSize: TextUnit,
+): SpanStyle? {
+    val properties = parseCssDeclarations(style)
 
     var hasStyle = false
     var spanStyle = SpanStyle()
@@ -948,6 +1082,35 @@ private fun parseInlineSpanStyle(style: String): SpanStyle? {
         }
     }
 
+    properties["font-family"]?.let { value ->
+        parseFontFamily(value)?.let {
+            spanStyle = spanStyle.merge(SpanStyle(fontFamily = it))
+            hasStyle = true
+        }
+    }
+
+    properties["font-size"]?.let { value ->
+        parseFontSize(
+            fontSize = value,
+            density = density,
+            baseFontSize = baseFontSize,
+        )?.let {
+            spanStyle = spanStyle.merge(SpanStyle(fontSize = it))
+            hasStyle = true
+        }
+    }
+
+    properties["letter-spacing"]?.let { value ->
+        parseSpacing(
+            spacing = value,
+            density = density,
+            baseFontSize = baseFontSize,
+        )?.let {
+            spanStyle = spanStyle.merge(SpanStyle(letterSpacing = it))
+            hasStyle = true
+        }
+    }
+
     properties["text-decoration"]?.let { value ->
         parseTextDecoration(value)?.let {
             spanStyle = spanStyle.merge(SpanStyle(textDecoration = it))
@@ -955,7 +1118,248 @@ private fun parseInlineSpanStyle(style: String): SpanStyle? {
         }
     }
 
+    val backgroundValue = properties["background-color"] ?: properties["background"]
+    backgroundValue?.let { value ->
+        parseColor(value)?.let {
+            spanStyle = spanStyle.merge(SpanStyle(background = it))
+            hasStyle = true
+        }
+    }
+
     return spanStyle.takeIf { hasStyle }
+}
+
+private fun parseBlockTextStyle(
+    style: String,
+    density: Density,
+    baseTextStyle: TextStyle,
+): TextStyle? {
+    val properties = parseCssDeclarations(style)
+
+    val inlineStyle = parseInlineSpanStyle(
+        style = style,
+        density = density,
+        baseFontSize = baseTextStyle.fontSize,
+    )
+
+    var hasStyle = inlineStyle != null
+    var textStyle = TextStyle(
+        color = inlineStyle?.color ?: Color.Unspecified,
+        fontSize = inlineStyle?.fontSize ?: TextUnit.Unspecified,
+        fontWeight = inlineStyle?.fontWeight,
+        fontStyle = inlineStyle?.fontStyle,
+        fontFamily = inlineStyle?.fontFamily,
+        letterSpacing = inlineStyle?.letterSpacing ?: TextUnit.Unspecified,
+        background = inlineStyle?.background ?: Color.Unspecified,
+        textDecoration = inlineStyle?.textDecoration,
+    )
+
+    properties["line-height"]?.let { value ->
+        parseLineHeight(
+            lineHeight = value,
+            density = density,
+            baseFontSize = baseTextStyle.fontSize,
+        )?.let {
+            textStyle = textStyle.merge(TextStyle(lineHeight = it))
+            hasStyle = true
+        }
+    }
+
+    properties["text-align"]?.let { value ->
+        parseTextAlign(value)?.let {
+            textStyle = textStyle.merge(TextStyle(textAlign = it))
+            hasStyle = true
+        }
+    }
+
+    return textStyle.takeIf { hasStyle }
+}
+
+private fun parseCssDeclarations(style: String): Map<String, String> {
+    return style
+        .split(";")
+        .mapNotNull { property ->
+            val parts = property.split(":", limit = 2)
+            if (parts.size == 2) parts[0].trim().lowercase() to parts[1].trim() else null
+        }
+        .toMap()
+}
+
+private fun parseFontSize(
+    fontSize: String,
+    density: Density,
+    baseFontSize: TextUnit,
+): TextUnit? {
+    val normalized = fontSize.trim().lowercase()
+    if (normalized.isEmpty()) return null
+
+    fun scaleBase(multiplier: Float): TextUnit? {
+        if (!baseFontSize.isSpecified) return null
+        return when (baseFontSize.type) {
+            TextUnitType.Sp -> (baseFontSize.value * multiplier).sp
+            TextUnitType.Em -> (baseFontSize.value * multiplier).em
+            else -> null
+        }
+    }
+
+    val absoluteKeywordScale = when (normalized) {
+        "xx-small" -> 0.6f
+        "x-small" -> 0.75f
+        "small" -> 0.89f
+        "medium" -> 1f
+        "large" -> 1.2f
+        "x-large" -> 1.5f
+        "xx-large" -> 2f
+        "smaller" -> 0.833f
+        "larger" -> 1.2f
+        else -> null
+    }
+    if (absoluteKeywordScale != null) {
+        return scaleBase(absoluteKeywordScale)
+    }
+
+    return when {
+        normalized.endsWith("sp") -> normalized.removeSuffix("sp").trim().toFloatOrNull()?.sp
+        normalized.endsWith("px") -> normalized.removeSuffix("px").trim().toFloatOrNull()?.let {
+            with(density) { it.toSp() }
+        }
+
+        normalized.endsWith("em") -> normalized.removeSuffix("em").trim().toFloatOrNull()?.em
+        normalized.endsWith("rem") -> normalized.removeSuffix("rem").trim().toFloatOrNull()?.let {
+            if (baseFontSize.isSpecified && baseFontSize.type == TextUnitType.Sp) {
+                (baseFontSize.value * it).sp
+            } else {
+                16.sp * it
+            }
+        }
+
+        normalized.endsWith("%") -> normalized.removeSuffix("%").trim().toFloatOrNull()?.let {
+            scaleBase(it / 100f)
+        }
+
+        else -> normalized.toFloatOrNull()?.let {
+            with(density) { it.toSp() }
+        }
+    }
+}
+
+private fun parseSpacing(
+    spacing: String,
+    density: Density,
+    baseFontSize: TextUnit,
+): TextUnit? {
+    val normalized = spacing.trim().lowercase()
+    if (normalized.isEmpty()) return null
+
+    return when {
+        normalized.endsWith("sp") -> normalized.removeSuffix("sp").trim().toFloatOrNull()?.sp
+        normalized.endsWith("px") -> normalized.removeSuffix("px").trim().toFloatOrNull()?.let {
+            with(density) { it.toSp() }
+        }
+
+        normalized.endsWith("em") -> normalized.removeSuffix("em").trim().toFloatOrNull()?.em
+        normalized.endsWith("rem") -> normalized.removeSuffix("rem").trim().toFloatOrNull()?.let {
+            if (baseFontSize.isSpecified && baseFontSize.type == TextUnitType.Sp) {
+                (baseFontSize.value * it).sp
+            } else {
+                16.sp * it
+            }
+        }
+
+        normalized.endsWith("%") -> normalized.removeSuffix("%").trim().toFloatOrNull()?.let {
+            if (!baseFontSize.isSpecified) return@let null
+            when (baseFontSize.type) {
+                TextUnitType.Sp -> (baseFontSize.value * it / 100f).sp
+                TextUnitType.Em -> (baseFontSize.value * it / 100f).em
+                else -> null
+            }
+        }
+
+        else -> normalized.toFloatOrNull()?.let {
+            with(density) { it.toSp() }
+        }
+    }
+}
+
+private fun parseLineHeight(
+    lineHeight: String,
+    density: Density,
+    baseFontSize: TextUnit,
+): TextUnit? {
+    val normalized = lineHeight.trim().lowercase()
+    if (normalized.isEmpty()) return null
+
+    if (normalized.matches(Regex("[0-9]*\\.?[0-9]+"))) {
+        if (!baseFontSize.isSpecified) return null
+        return when (baseFontSize.type) {
+            TextUnitType.Sp -> (baseFontSize.value * normalized.toFloat()).sp
+            TextUnitType.Em -> (baseFontSize.value * normalized.toFloat()).em
+            else -> null
+        }
+    }
+
+    return parseFontSize(
+        fontSize = normalized,
+        density = density,
+        baseFontSize = baseFontSize,
+    )
+}
+
+private fun parseLegacyFontSize(
+    fontSize: String,
+    density: Density,
+    baseFontSize: TextUnit,
+): TextUnit? {
+    val normalized = fontSize.trim()
+    val legacyScale = when (normalized) {
+        "1" -> 0.625f
+        "2" -> 0.8125f
+        "3" -> 1f
+        "4" -> 1.125f
+        "5" -> 1.5f
+        "6" -> 2f
+        "7" -> 3f
+        else -> null
+    }
+    if (legacyScale != null) {
+        return parseFontSize(
+            fontSize = "${legacyScale * 100}%",
+            density = density,
+            baseFontSize = if (baseFontSize.isSpecified) baseFontSize else 16.sp,
+        )
+    }
+
+    if ((normalized.startsWith("+") || normalized.startsWith("-")) && baseFontSize.isSpecified) {
+        val delta = normalized.toIntOrNull() ?: return null
+        val adjustedLevel = (3 + delta).coerceIn(1, 7)
+        return parseLegacyFontSize(
+            fontSize = adjustedLevel.toString(),
+            density = density,
+            baseFontSize = baseFontSize,
+        )
+    }
+
+    return parseFontSize(
+        fontSize = normalized,
+        density = density,
+        baseFontSize = baseFontSize,
+    )
+}
+
+private fun parseFontFamily(fontFamily: String): FontFamily? {
+    val normalized = fontFamily
+        .split(",")
+        .map { it.trim().trim('"', '\'').lowercase() }
+        .firstOrNull()
+        ?: return null
+
+    return when {
+        normalized.contains("mono") || normalized.contains("courier") -> FontFamily.Monospace
+        normalized.contains("serif") || normalized.contains("georgia") || normalized.contains("times") -> FontFamily.Serif
+        normalized.contains("sans") || normalized.contains("arial") || normalized.contains("helvetica") -> FontFamily.SansSerif
+        normalized.contains("cursive") -> FontFamily.Cursive
+        else -> null
+    }
 }
 
 private fun parseColor(colorString: String): Color? {
@@ -1064,5 +1468,15 @@ private fun parseTextDecoration(textDecoration: String): TextDecoration? {
         0 -> null
         1 -> decorations.first()
         else -> TextDecoration.combine(decorations)
+    }
+}
+
+private fun parseTextAlign(textAlign: String): TextAlign? {
+    return when (textAlign.trim().lowercase()) {
+        "left", "start" -> TextAlign.Start
+        "right", "end" -> TextAlign.End
+        "center" -> TextAlign.Center
+        "justify" -> TextAlign.Justify
+        else -> null
     }
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.datetime.TimeZone
@@ -74,6 +75,7 @@ class GenerationHandler(
         memories: List<AssistantMemory>? = null,
         tools: List<Tool> = emptyList(),
         maxSteps: Int = 256,
+        processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ): Flow<GenerationChunk> = flow {
         val provider = model.findProvider(settings.providers) ?: error("Provider not found")
         val providerImpl = providerManager.getProviderByType(provider)
@@ -107,9 +109,9 @@ class GenerationHandler(
                 addAll(tools)
             }
 
-            // Check if we have approved tool calls to execute (resuming after approval)
+            // Check if we have tool calls ready to continue after user interaction.
             val pendingTools = messages.lastOrNull()?.getTools()?.filter {
-                !it.isExecuted && (it.approvalState is ToolApprovalState.Approved || it.approvalState is ToolApprovalState.Denied || it.approvalState is ToolApprovalState.Answered)
+                it.canResumeExecution
             } ?: emptyList()
 
             val toolsToProcess: List<UIMessagePart.Tool>
@@ -146,7 +148,8 @@ class GenerationHandler(
                     provider = provider,
                     tools = toolsInternal,
                     memories = memories ?: emptyList(),
-                    stream = assistant.streamOutput
+                    stream = assistant.streamOutput,
+                    processingStatus = processingStatus,
                 )
                 messages = messages.visualTransforms(
                     transformers = outputTransformers,
@@ -216,11 +219,9 @@ class GenerationHandler(
 
                 toolsToProcess = updatedTools
             } else {
-                // Resuming after approval - use the pending tools directly
-                Log.i(TAG, "generateText: resuming with ${pendingTools.size} approved/denied tools")
-                toolsToProcess = messages.last().getTools().filter {
-                    !it.isExecuted && (it.approvalState is ToolApprovalState.Approved || it.approvalState is ToolApprovalState.Denied || it.approvalState is ToolApprovalState.Answered)
-                }
+                // Resuming after user interaction - use the resumable tools directly.
+                Log.i(TAG, "generateText: resuming with ${pendingTools.size} resumable tools")
+                toolsToProcess = messages.last().getTools().filter { it.canResumeExecution }
             }
 
             // Handle tools (execute approved tools, handle denied tools)
@@ -332,7 +333,8 @@ class GenerationHandler(
         provider: ProviderSetting,
         tools: List<Tool>,
         memories: List<AssistantMemory>,
-        stream: Boolean
+        stream: Boolean,
+        processingStatus: MutableStateFlow<String?> = MutableStateFlow(null),
     ) {
         val internalMessages = buildList {
             val system = buildString {
@@ -364,7 +366,8 @@ class GenerationHandler(
             context = context,
             model = model,
             assistant = assistant,
-            settings = settings
+            settings = settings,
+            processingStatus = processingStatus,
         )
 
         var messages: List<UIMessage> = messages

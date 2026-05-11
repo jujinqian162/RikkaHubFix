@@ -75,6 +75,12 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    private val GPT_5_5 = defineModel {
+        tokens("gpt", "5", "5")
+        visionInput()
+        toolReasoningAbility()
+    }
+
     private val GEMINI_20_FLASH = defineModel {
         tokens("gemini", "2", "0", "flash")
         visionInput()
@@ -237,6 +243,16 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    private val DEEPSEEK_V4_FLASH = defineModel {
+        tokens("deepseek", "v", "4", "flash")
+        toolReasoningAbility()
+    }
+
+    private val DEEPSEEK_V4_PRO = defineModel {
+        tokens("deepseek", "v", "4", "pro")
+        toolReasoningAbility()
+    }
+
     private val DEEPSEEK_R1 = defineGroup {
         add(DEEPSEEK_R1_MODEL, DEEPSEEK_REASONER)
     }
@@ -365,6 +381,17 @@ object ModelRegistry {
         toolReasoningAbility()
     }
 
+    private val XIAOMI_MIMO_V2_5 = defineModel {
+        tokens("mimo", "v", "2", "5")
+        visionInput()
+        toolReasoningAbility()
+    }
+
+    private val XIAOMI_MIMO_V2_5_PRO = defineModel {
+        tokens("mimo", "v", "2", "5", "pro")
+        toolReasoningAbility()
+    }
+
     val QWEN_MT = defineModel {
         tokens("qwen", "mt")
     }
@@ -381,6 +408,7 @@ object ModelRegistry {
         GPT_5_4,
         GPT_5_4_MINI,
         GPT_5_4_NANO,
+        GPT_5_5,
         GEMINI_20_FLASH,
         GEMINI_2_5_FLASH,
         GEMINI_2_5_PRO,
@@ -405,6 +433,8 @@ object ModelRegistry {
         DEEPSEEK_CHAT,
         DEEPSEEK_R1_MODEL,
         DEEPSEEK_REASONER,
+        DEEPSEEK_V4_FLASH,
+        DEEPSEEK_V4_PRO,
         DEEPSEEK_V3_1,
         DEEPSEEK_V3_2,
         QWEN_3,
@@ -428,6 +458,8 @@ object ModelRegistry {
         MINIMAX_M2_7,
         XIAOMI_MIMO_V2,
         XIAOMI_MIMO_V2_PRO,
+        XIAOMI_MIMO_V2_5,
+        XIAOMI_MIMO_V2_5_PRO,
         QWEN_MT
     )
 
