@@ -441,6 +441,8 @@
   <string name="permission_local_network_desc">Allow the web server to be accessed from devices on the same local network</string>
   <string name="permission_microphone">Microphone</string>
   <string name="permission_microphone_desc">Microphone permission is required for speech recognition</string>
+  <string name="permission_read_images">Photos and videos</string>
+  <string name="permission_read_images_desc">Allow access to images for chat uploads</string>
   <string name="permission_notification">Notification</string>
   <string name="permission_notification_desc">Send notifications</string>
   <string name="permission_permanently_denied">Permanently Denied</string>

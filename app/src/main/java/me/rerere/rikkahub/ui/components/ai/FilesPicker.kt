@@ -59,6 +59,7 @@ import me.rerere.rikkahub.data.model.Conversation
 import me.rerere.rikkahub.ui.components.ui.ExtensionSelector
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionCamera
 import me.rerere.rikkahub.ui.components.ui.permission.PermissionManager
+import me.rerere.rikkahub.ui.components.ui.permission.PermissionReadImages
 import me.rerere.rikkahub.ui.components.ui.permission.rememberPermissionState
 import me.rerere.rikkahub.ui.context.LocalNavController
 import me.rerere.rikkahub.ui.context.LocalSettings
@@ -251,12 +252,22 @@ private fun InjectionQuickConfigSheet(
 
 @Composable
 private fun ImagePickButton(onClick: () -> Unit = {}) {
-    BigIconTextButton(icon = {
-        Icon(HugeIcons.Image02, null)
-    }, text = {
-        Text(stringResource(R.string.photo))
-    }) {
-        onClick()
+    val imagePermission = rememberPermissionState(PermissionReadImages)
+
+    PermissionManager(
+        permissionState = imagePermission
+    ) {
+        BigIconTextButton(icon = {
+            Icon(HugeIcons.Image02, null)
+        }, text = {
+            Text(stringResource(R.string.photo))
+        }) {
+            if (imagePermission.allRequiredPermissionsGranted) {
+                onClick()
+            } else {
+                imagePermission.requestPermissions()
+            }
+        }
     }
 }
 
